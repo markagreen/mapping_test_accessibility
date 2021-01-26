@@ -28,7 +28,7 @@ library(ggplot2) # For plotting
 library(hereR) # For routing
 
 # Set API key for 'here'
-set_key("IXVUkHClCXqgBf3lJeGyJij0TfU6zG5mInbC-uaCtn0") # You will need to register and request a key - is free
+set_key("") # You will need to register and request a key - is free
 
 # Load data
 sites <- read.csv("./all_possible_sites_small.csv") # Location of all active and inactive test sites 
