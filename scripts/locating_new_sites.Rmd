@@ -1,0 +1,345 @@
+---
+title: "Whole city testing in Liverpool"
+output: html_notebook
+author: Mark A. Green
+---
+
+### Introduction
+
+__Aim:__ To identify locations for new 'pop-up' sites for 'super weekend'.
+
+The document investigates where the whole city testing sites are currently located and identifies which areas may be selected for new test sites to be established.
+
+The format of the document is a 'R notebook'. The notebook contains a mixture of written interpretation, executionable code and outputs from analyses (the latter two do not need running and are stored in this document). Feel free to ignore, skip or hide the code as it is not required for the interpretation of the document. Analyses are all run in R and are reproduceable from this document alone (all data are open source and can be shared). 
+
+Before we start, we need to set up R ready for our analyses. 
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(maxcovr) # For Location-Allocation modelling
+library(dplyr) # For data wrangling
+library(purrr)
+library(leaflet) # For mapping
+library(sf)
+library(ggplot2) # For plotting
+library(hereR) # For routing
+
+# Set API key for 'here'
+set_key("") # You will need to register and request a key - is free
+
+# Load data
+sites <- read.csv("./ltc.csv") # Location of test sites (data taken from the whole city testing website, happy to share)
+oas <- read_sf(dsn = "./liverpool_oa/england_oa_2011.shp") # Output areas (data from UKBorders, happy to share)
+# st_crs(oas) # Check CRS - see 'user input' at top
+oas <- st_transform(oas, 4326) # Transform to same CRS as lat/long
+
+# Convert sites to spatial points format
+sites_sp <- sites %>% 
+  st_as_sf(coords = c("X", "Y")) %>% # Define co-ordinates
+  st_set_crs(4326)
+
+```
+
+### Location of current sites
+We begin by mapping the location of current test sites (23rd November 2020). To do this, we map the point location (defined using longitude and latitude) of all test sites. We have then calculated the 15 minute walking distance around each test sites based on the street network surrounding areas (represented by the area covered in blue). Other walking distances or times can be defined and re-run for our purposes (please let me know).
+
+```{r}
+# Calculate walking accessibility around each test site
+access <- isoline(sites_sp, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+
+# Convert to polygon format for mapping
+access_p <- access %>%
+     st_cast("POLYGON")
+
+# Map existing sites
+leaflet() %>%
+  addCircleMarkers(data = sites, # Data for plotting points
+                   lng = sites$X, # Longitude
+                   lat = sites$Y, # Latitude
+                   radius = 1, # Display as point
+                   color = "steelblue") %>% # Colour
+  addPolygons(data = access_p) %>% # Plot 15 min walkability
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(lng = median(sites$X), # Define where to centre the map
+          lat = median(sites$Y),
+          zoom = 12)
+
+```
+
+Coverage is spread out across Liverpool. There is a large gap that runs from Everton park, West through passed Tuebrook, Clubmoor and into West Derby. These areas have low uptake of testing, as well as concentrated levels of deprived in densely populated neighbourhoods.
+
+### Estimating optimal locations for geographic coverage
+We can use a technique called 'Location-Allocation modelling' that tries to optimise the spatial location of points to maximise geographical coverage. The technique essentially tries to find the best number of points that minimise distances to other areas or points (i.e. minimises gaps in geographical coverage). 
+
+In the analysis below, we postulate which are the best postcodes within Liverpool (i.e. all 'L' postcodes) to locate new testing sites. This is therefore the 'best case scenario' as it assumes you can set up test sites anywhere in the city even though this is not possible. To work this out, we calculate the distance to the centre of output areas. Output areas are the smallest statistical zone available (~100 people). We compare this to existing site coverage, which is defined in the analysis as a 800m buffer (circle) around each test site. 
+
+Given the tight deadline for the selection of sites, I have been unable to refine the method more appropriately and accurately (e.g. incoporating street network walking distance/time for measuring accessibility). Apologies to Captain Tom here also - I could not get the algorithm to work other than for Euclidean distance. See Appendix A for a comparison of 15 minute walking distance to 800m buffers (tl;dr they mostly match up).
+
+We model the best location for 12 additional test sites (as defined by Liverpool City Council) and list their locations below.
+
+```{r}
+# Calculate centroid of output areas
+oa_centres <- st_centroid(oas) # Find centroid
+oas_sf <- st_as_sf(oa_centres, coords = c("lon","lat")) %>% # Re-format data
+  st_set_crs(4326)
+oas_coords <- unlist(st_geometry(oas_sf)) %>% # Convert to Lat/Long
+  matrix(ncol=2,byrow=TRUE) %>% 
+  as_tibble() %>% 
+  setNames(c("lon","lat"))
+
+# # Describe current coverage
+# coverage(current_sites, 
+#          oas_coords,
+#          distance_cutoff = 100)
+
+# Edit inputs to match required format
+current_sites <- sites
+current_sites$Location <- NULL
+names(current_sites)[names(current_sites)=="X"] <- "long"
+names(current_sites)[names(current_sites)=="Y"] <- "lat"
+names(oas_coords)[names(oas_coords)=="lon"] <- "long"
+
+# Load in possible new test site locations
+postcodes <- read.csv("./l_postcodes/nspd_2020_05.csv") # All 'L' postcodes as of May 2020 (from UKBorders, happy to share)
+pcs <- postcodes[,c("lat", "long")] # Subset all postcodes to match required format
+
+# Run location-allocation model to select five best new sites
+mc_12 <- max_coverage(existing_facility = current_sites, # List of current test sites
+                      proposed_facility = pcs, # List of all possible postcodes
+                      user = oas_coords, # Data to optimise to (i.e. output area centroids)
+                      n_added = 12, # How many facilities
+                      distance_cutoff = 800) # 800m bufer radius 
+#summary(mc_12) # Plot summary statistics
+mc_12$facility_selected[[1]] # List sites selected
+
+```
+
+The solution above covers 80% of all output areas within Liverpool within a 800m buffer (~62% for existing sites only), and 94% of all output areas within 1km (75% for existing sites).
+
+We can map their locations too. Existing sites are plotted in blue, with new proposed sites in green.
+
+```{r}
+# Map new and existing sites
+leaflet() %>%
+  ## Plot exsting site locations ##
+  addCircleMarkers(data = sites, # Data for plotting points
+                   lng = sites$X, # Longitude
+                   lat = sites$Y, # Latitude
+                   radius = 1, # Display as point
+                   color = "steelblue") %>% # Colour
+  addPolygons(data = access_p) %>% # Plot 15 min walkability
+  ## Plot proposed new site locations ##
+  addCircleMarkers(data = mc_12$facility_selected[[1]], # Data for plotting new sites as points
+                   radius = 1, 
+                   color = "green") %>% 
+  addCircles(data = mc_12$facility_selected[[1]], 
+             radius = 800,
+             fill = FALSE,
+             weight = 3,
+             color = "green") %>%
+  addProviderTiles("CartoDB.Positron") %>% # Add on map layer below
+  setView(lng = median(sites$X), # Define where to centre the map
+          lat = median(sites$Y),
+          zoom = 12)
+
+```
+
+You can see how the new sites are nicely placed within the gaps of the existing test sites.
+
+We can tidy up the map and calculate 15 minute walking distance (street network) around these new sites too.
+
+```{r}
+# Repeat for predicted sites
+pred <- mc_12$facility_selected[[1]] # List sites selected
+pred_sp <- pred %>% # Convert sites to spatial points format
+  st_as_sf(coords = c("long", "lat")) %>% # Define co-ordinates
+  st_set_crs(4326)
+
+access2 <- isoline(pred_sp, mode = "pedestrian", range = 15*60, range_type = "time") # Calculate 15 min walk distance from
+
+access2_p <- access2 %>% # Convert to polygon format for mapping
+  st_cast("POLYGON")
+
+# Map new and existing sites
+leaflet() %>%
+  ## Plot exsting site locations ##
+  addCircleMarkers(data = sites, # Data for plotting points
+                   lng = sites$X, # Longitude
+                   lat = sites$Y, # Latitude
+                   radius = 1, # Display as point
+                   color = "steelblue") %>% # Colour
+  addPolygons(data = access_p) %>% # Plot 15 min walkability
+  ## Plot proposed new site locations ##
+  addCircleMarkers(data = pred, # Data for plotting points
+                   lng = pred$long, # Longitude
+                   lat = pred$lat, # Latitude
+                   radius = 1, # Display as point
+                   color = "green") %>% # Colour
+  addPolygons(data = access2_p, color = "green") %>% # Plot 15 min walkabiloty
+  addProviderTiles("CartoDB.Positron") %>% # Add on map layer below
+  setView(lng = median(sites$X), # Define where to centre the map
+          lat = median(sites$Y),
+          zoom = 12)
+
+```
+
+That looks a lot better!
+
+Let's calculate the population covered across the areas with 15 minutes walking distance of both of these sites. First, we estimate the total population based on mid-year 2019 estimates for output areas within 15 minutes of the existing sites.
+
+```{r}
+# Population covered in each site
+
+pop <- read.csv("./liverpool_oa/oa_population_north_west.csv") # Load population data
+
+
+# Identify whether each output fals within the existing test sites
+oas <- oa_centres %>% mutate(
+  intersection = as.integer(st_intersects(geometry, access_p))
+)
+
+# Recode variable to binary (rather than matching each polygon id)
+oas$access_old <- ">15 mins"
+oas$access_old[oas$intersection >=1] <- "<=15 mins"
+oas$intersection <- NULL
+
+# Repeat analysis for new test sites only
+oas <- oas %>% mutate(
+  intersection = as.integer(st_intersects(geometry, access2_p))
+) 
+
+# Recode
+oas$access_new <- ">15 mins"
+oas$access_new[oas$intersection >=1] <- "<=15 mins"
+oas$intersection <- NULL
+
+# Create combined variable
+oas$access_both <- ">15 mins"
+oas$access_both[oas$access_old == "<=15 mins"] <- "<=15 mins"
+oas$access_both[oas$access_new == "<=15 mins"] <- "<=15 mins"
+
+# Join on population
+oas <- merge(oas, pop, by.x = "code", by.y = "oa11cd", all.x = TRUE)
+oas$population <- as.numeric(oas$population) # Convert to numeric (as factor)
+
+# Sum population counts - existing sites
+df <- aggregate(oas$population, by=list(Category=oas$access_old), FUN=sum) # Sum population
+df$Percent <- (df$x / sum(df$x)) * 100 # Calculate percentages
+names(df)[names(df)=="x"] <- "Population" # Rename
+df
+
+```
+
+The estimate would suggest that 35% of the population of Liverpool was within 15 minute walking distance of a nearest test site (existing ones only) or 151,376 people. How about the population within the new test sites?
+
+```{r}
+# Sum population counts - new sites
+df <- aggregate(oas$population, by=list(Category=oas$access_new), FUN=sum) # Sum population
+df$Percent <- (df$x / sum(df$x)) * 100 # Calculate percentages
+names(df)[names(df)=="x"] <- "Population" # Rename
+df
+
+```
+
+The new sites would cover an additional 14.8% of Liverpool's total population or 63,751 people. Not too bad given there are fewer test sites here (12 proposed vs 37 existing). Finally, how about if we combined the coverage in the two sites together?
+
+```{r}
+# Sum population counts - both sites together
+df <- aggregate(oas$population, by=list(Category=oas$access_both), FUN=sum) # Sum population
+df$Percent <- (df$x / sum(df$x)) * 100 # Calculate percentages
+names(df)[names(df)=="x"] <- "Population" # Rename
+df
+
+```
+
+The two new sites will almost mean that half of Liverpool's population (49.3% or 212,283 people) were within 15 minutes walking time of a test site. Ace.
+
+Using these sites, we can also compare the characteristics of the areas within the 15 minute walking time around test sites. As an example, we will examine the deprivation profiles of the existing and new proposed sites (defined based on the postcodes falling within each polygon on the map above, with postcodes linked to the Index of Multiple Deprivation (IMD) 2019).
+
+First, let's have a look at the deprivation profile of areas covered in the existing test sites.
+
+```{r message=FALSE, warning=FALSE}
+# Convert sites to spatial points format
+postcodes_sp <- postcodes %>% 
+  st_as_sf(coords = c("long", "lat")) %>% # Define co-ordinates
+  st_set_crs(4326)
+
+# Identify whether each postcode fals within the existing test sites
+pnts <- postcodes_sp %>% mutate(
+  intersection = as.integer(st_intersects(geometry, access_p))
+) 
+
+# Recode variable to binary (rather than matching each polygon id)
+pnts$access_old <- ">15 mins"
+pnts$access_old[pnts$intersection >=1] <- "<=15 mins"
+pnts$intersection <- NULL
+
+# Repeat analysis for new test sites only
+pnts <- pnts %>% mutate(
+  intersection = as.integer(st_intersects(geometry, access2_p))
+) 
+
+# Recode
+pnts$access_new <- ">15 mins"
+pnts$access_new[pnts$intersection >=1] <- "<=15 mins"
+pnts$intersection <- NULL
+
+# Add combined variable for both test sites together
+pnts$access_both <- ">15 mins"
+pnts$access_both[pnts$access_old == "<=15 mins"] <- "<=15 mins"
+pnts$access_both[pnts$access_new == "<=15 mins"] <- "<=15 mins"
+
+# Plot
+library(ggplot2)
+ggplot(pnts, aes(access_old, imd)) +
+  geom_boxplot() +
+  xlab("Walking time accessibility to existing test sites") +
+  ylab("IMD rank (1 is most, 32,844 is least deprived)")
+
+```
+
+The box plot shows the distribution of deprivation within a 15 minute walk of the existing test sites (left) to those outside of it (right). If we focus on the black line within the box - this is the median IMD rank. Test sites are currently located more in deprived locations compared to the rest of the city, which is good.
+
+We now repeat the analysis for the proposed new sites.
+
+```{r}
+# Plot
+ggplot(pnts, aes(access_new, imd)) +
+  geom_boxplot()  +
+  xlab("Walking time accessibility to proposed new test sites") +
+  ylab("IMD rank (1 is most, 32,844 is least deprived)")
+
+```
+
+We can see that now, the new sites are located in the most deptived areas with the median IMD rank far lower than before. This would suggest a more targeted approach, which will help to tackle inequalities in uptake.
+
+We could stratify the selection of potential postcodes to only select sites within deprived areas, or areas with low uptake and/or high prevalence too if we wish to take a more targeted approach (rather than purely geographical).
+
+### Appendix A
+
+Comparison of 15 minute walk time from test sites (blue) and 800m straight line (Euclidean) distance buffer around test sites (orange).
+```{r}
+# Map existing sites
+leaflet() %>%
+    addCircleMarkers(data = sites, # Data for plotting points
+                     lng = sites$X, # Longitude
+                     lat = sites$Y, # Latitude
+                     radius = 1, # Display as point
+                     color = "steelblue") %>% # Colour
+    addPolygons(data = access_p) %>% # Plot 15 min walkability
+    addCircles(data = sites, # Data for plotting points with radius around them
+               lng = sites$X, # Longitude
+               lat = sites$Y, # Latitude
+               radius = 800, # Add 1km buffer radius (straight line distance) around each site
+               stroke = TRUE, # Draw border of radius
+               fill = NULL, # Do not fill within
+               opacity = 0.8, # How see through it is
+               weight = 2, # Width of border/lines
+               color = "coral") %>% # Colour
+    addProviderTiles("CartoDB.Positron") %>%
+    setView(lng = median(sites$X), # Define where to centre the map
+            lat = median(sites$Y),
+            zoom = 12)
+
+```
+

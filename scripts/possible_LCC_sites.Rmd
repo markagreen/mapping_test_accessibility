@@ -1,0 +1,216 @@
+---
+title: "Accessbility to possible sites"
+output: html_notebook
+author: Mark Green
+---
+
+__Aim:__ To calculate accessbility to all possible sites within Liverpool.
+
+In the notebook, I have calculated the 15 minute walking distance for all possible venues to give an idea of where to select the best locations. I have done this for all the sites Captain Richard Fergus sent to me today. 7 no recce conducted sites were removed as they contained no latitude or longitude records. The colours of the site coverage follows the same as in the excel file, so:
+
+* Active = darker green (n=71)
+* Approved = lighter green (n=1)
+* Follow up required  = yellow (n=7)
+* No recce conducted = white/grey (n=30)
+* Suitable = blue (n=15)
+* Unsuitable = red (n=91)
+
+You can turn off and on the each of these layers by clicking on them in the right hand box.
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(maxcovr) # For Location-Allocation modelling
+library(dplyr) # For data wrangling
+library(purrr)
+library(leaflet) # For mapping
+library(sf)
+library(ggplot2) # For plotting
+library(hereR) # For routing
+
+# Set API key for 'here'
+set_key("IXVUkHClCXqgBf3lJeGyJij0TfU6zG5mInbC-uaCtn0") # You will need to register and request a key - is free
+
+# Load data
+sites <- read.csv("./all_possible_sites_small.csv") # Location of all active and inactive test sites 
+
+# Convert sites to spatial points format
+sites_sp <- sites %>% 
+  st_as_sf(coords = c("long", "lat")) %>% # Define co-ordinates (or X / Y)
+  st_set_crs(4326)
+
+# Subset by type
+active <- sites_sp[sites_sp$state == "Active",]
+approved <- sites_sp[sites_sp$state == "Approved",]
+follow_up <- sites_sp[sites_sp$state == "Follow up required",]
+no_recce <- sites_sp[sites_sp$state == "No Recce Conducted",]
+suitable <- sites_sp[sites_sp$state == "Suitable - Awaiting Approval",]
+unsuitable <- sites_sp[sites_sp$state == "Unsuitable",]
+
+# Calculate walking accessibility around each test site state
+active_access <- isoline(active, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+approved_access <- isoline(approved, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+follow_up_access <- isoline(follow_up, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+no_recce_access <- isoline(no_recce, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+suitable_access <- isoline(suitable, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+unsuitable_access <- isoline(unsuitable, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+
+# Convert to polygon format for mapping
+active_access_p <- active_access %>%
+                        st_cast("POLYGON")
+approved_access_p <- approved_access %>%
+                        st_cast("POLYGON")
+follow_up_access_p <- follow_up_access %>%
+                        st_cast("POLYGON")
+no_recce_access_p <- no_recce_access %>%
+                        st_cast("POLYGON")
+suitable_access_p <- suitable_access %>%
+                        st_cast("POLYGON")
+unsuitable_access_p <- unsuitable_access %>%
+                        st_cast("POLYGON")
+
+# Map existing sites
+leaflet() %>%
+  addPolygons(data = active_access_p, 
+              group = "Active",
+              color = "green") %>% # Active sites
+    addPolygons(data = approved_access_p,
+              group = "Approved",
+              color = "palegreen") %>% # Approved sites
+    addPolygons(data = follow_up_access_p,
+              group = "Follow up",
+              color = "yellow") %>% # Follow up sites
+    addPolygons(data = no_recce_access_p,
+              group = "No recce",
+              color = "snow2") %>% # No recce sites
+    addPolygons(data = suitable_access_p,
+              group = "Suitable",
+              color = "steelblue") %>% # Suitable sites
+    addPolygons(data = unsuitable_access_p,
+              group = "Unsuitable",
+              color = "orangered") %>% # Unsuitable sites
+  addProviderTiles("CartoDB.Positron", 
+                   group = "Base") %>%
+  addLayersControl(#baseGroups = c("Base"), # Control layers in map
+    overlayGroups = c("Active", "Approved", "Follow up", "No recce", "Suitable", "Unsuitable"),
+    options = layersControlOptions(collapsed = FALSE))
+
+
+
+
+```
+
+I have also reproduced this map for the active sites that are accessible to the public and advertised on the website (e.g. the University of Liverpool or City of Liverpool College sites are only accessbile to those who attend those sites). Again we map the same, but only consider the layers that might be possible in the time available.
+
+```{r}
+# Load data
+sites <- read.csv("./ltc.csv") # Location of test sites (data taken from the whole city testing website, happy to share)
+
+# Convert sites to spatial points format
+sites_sp <- sites %>% 
+  st_as_sf(coords = c("X", "Y")) %>% # Define co-ordinates
+  st_set_crs(4326)
+
+# Calculate walking accessibility around each test site
+access <- isoline(sites_sp, mode = "pedestrian", range = 15*60, range_type = "time") # 15 min walk distance
+
+# Convert to polygon format for mapping
+access_p <- access %>%
+     st_cast("POLYGON")
+
+# Map
+leaflet() %>%
+     addPolygons(data = suitable_access_p,
+                 group = "Suitable",
+                 color = "steelblue") %>% # Suitable sites
+      addPolygons(data = approved_access_p,
+              group = "Approved",
+              color = "palegreen") %>% # Approved sites
+    addPolygons(data = follow_up_access_p,
+              group = "Follow up",
+              color = "yellow") %>% # Follow up sites
+    addPolygons(data = no_recce_access_p,
+              group = "No recce",
+              color = "snow2") %>% # No recce sites
+     addPolygons(data = access_p,
+                 group = "Active to public",
+                 color = "green") %>% # Plot 15 min walkability
+     addProviderTiles("CartoDB.Positron",
+                      group = "Base") %>%
+    addLayersControl(#baseGroups = c("Base"), # Control layers in map
+    overlayGroups = c("Active to public", "Approved", "Follow up", "No recce", "Suitable"),
+    options = layersControlOptions(collapsed = FALSE))
+
+
+```
+
+The takeaway for me is that some of the no recce sites appear to be in good locations for improving geographic coverage (assuming we have the time to investigate them). The suitable sites are in decent locations, but might cover some of the same ground.
+
+We can identify the 12 best sites that give the best geographical coverage (whether you wish to target certain areas as well, I cannot say from here). We will just consider those sites that are approved, need follow up, suitable or no recce in the analysis. We compare accessibility to the above map (i.e. only those accessible to the public).
+
+```{r}
+# Load data
+oas <- read_sf(dsn = "./liverpool_oa/england_oa_2011.shp") # Output areas (data from UKBorders, happy to share)
+# st_crs(oas) # Check CRS - see 'user input' at top
+oas <- st_transform(oas, 4326) # Transform to same CRS as lat/long
+
+# Calculate centroid of output areas
+oa_centres <- st_centroid(oas) # Find centroid
+oas_sf <- st_as_sf(oa_centres, coords = c("lon","lat")) %>% # Re-format data
+  st_set_crs(4326)
+oas_coords <- unlist(st_geometry(oas_sf)) %>% # Convert to Lat/Long
+  matrix(ncol=2,byrow=TRUE) %>% 
+  as_tibble() %>% 
+  setNames(c("lon","lat"))
+
+# # Describe current coverage
+# coverage(current_sites, 
+#          oas_coords,
+#          distance_cutoff = 100)
+
+# Edit inputs to match required format
+current_sites <- sites
+current_sites$Location <- NULL
+names(current_sites)[names(current_sites)=="X"] <- "long"
+names(current_sites)[names(current_sites)=="Y"] <- "lat"
+names(oas_coords)[names(oas_coords)=="lon"] <- "long"
+
+# Load in possible new test site locations
+poss_sites <- sites[sites$state == "Approved" | 
+                      sites$state == "Follow up required" | 
+                      sites$state == "Suitable - Awaiting Approval" | 
+                      sites$state == "No Recce Conducted",]
+pcs <- poss_sites[,c("lat", "long")] # Subset all postcodes to match required format
+
+# Run location-allocation model to select five best new sites
+mc_12 <- max_coverage(existing_facility = current_sites, # List of current test sites
+                      proposed_facility = pcs, # List of all possible postcodes
+                      user = oas_coords, # Data to optimise to (i.e. output area centroids)
+                      n_added = 12, # How many facilities
+                      distance_cutoff = 800) # 800m bufer radius 
+#summary(mc_12) # Plot summary statistics
+#mc_12$facility_selected[[1]] # List sites selected
+temp <- merge(data.frame(mc_12$facility_selected[[1]]), sites, by.x = c("lat", "long"), by.y = c("lat", "long"), all.x = TRUE) # Join onto names of sites
+temp
+
+```
+
+They are the best 12 sites (there are 14 sites here, but only because some lat/longs share multiple sites). We can also map them too.
+
+```{r}
+# Map new and existing sites
+leaflet() %>%
+  ## Plot exsting site locations ##
+  addPolygons(data = access_p) %>% # Plot 15 min walkability
+  ## Plot proposed new site locations ##
+  addCircleMarkers(data = mc_12$facility_selected[[1]], # Data for plotting new sites as points
+                   radius = 1, 
+                   color = "green") %>% 
+  addCircles(data = mc_12$facility_selected[[1]], 
+             radius = 800,
+             fill = FALSE,
+             weight = 3,
+             color = "green") %>%
+  addProviderTiles("CartoDB.Positron") # Add on map layer below
+
+```
+
