@@ -43,7 +43,8 @@ ggsave(map, filename = "./Maps/geovisualisation_plot.jpeg", dpi = 1200)
 ## Create fancier map for RGS blog ##
 
 # Grab Liverpool
-box <- getbb("Liverpool, UK") # Define bounding box for Liverpool
+# box <- getbb("Liverpool, UK") # Define bounding box for Liverpool (via OSM)
+box <- c(-3.08, 53.32, -2.77, 53.49) # Define bounding box for Liverpool (manual)
 
 # Collect road network in Liverpool
 roads <- box %>%
@@ -85,7 +86,7 @@ streets <- box %>%
 
 # Load Great Britain outline for basemap
 gb_outline <- read_sf(dsn = "./Shapefiles/GB outline/Local_Authority_Districts_(December_2017)_Boundaries_in_Great_Britain.shp") # Load GB outline (from https://geoportal.statistics.gov.uk/datasets/ae90afc385c04d869bc8cf8890bd1bcd_1)
-st_crs(gb_outline) # Check co-ordinate reference system
+# st_crs(gb_outline) # Check co-ordinate reference system
 gb_outline <- st_transform(gb_outline, 4326) # Set as same CRS as access shapefile
 
 # Final map
@@ -114,9 +115,12 @@ map2 <- ggplot() +
           alpha = 1, # Set see through
           lwd = 0.5, 
           col = "white") + 
-  coord_sf(xlim = c(min(box[1,]), max(box[1,])), # Define co-ordinates to plot
-           ylim = c(min(box[2,]), max(box[2,])),
-           expand = FALSE) +
+  # coord_sf(xlim = c(min(box[1,]), max(box[1,])), # Define co-ordinates to plot (if use bounding box for Liverpool)
+  #          ylim = c(min(box[2,]), max(box[2,])),
+  #          expand = FALSE) +
+  coord_sf(xlim = c(-3.08, -2.77), # Define co-ordinates to plot (manual definition)
+           ylim = c(53.32, 53.49),
+           expand = FALSE) + 
   theme(legend.position = F) + theme_void() + # Get rid of ggplot features
   #theme(panel.background=element_rect(fill = rgb(0.92,0.679,0.105))) # Set background colour yellow
   # theme(panel.background=element_rect(fill = rgb(0.41,0.70,0.91))) # Set background dark grey blue
@@ -125,7 +129,7 @@ map2 <- ggplot() +
 map2
 
 # Save - general for me
-ggsave(map2, filename = "./Maps/geovisualisation_plot3.jpeg", dpi = 1200)
+ggsave(map2, filename = "./Maps/geovisualisation_plot4.jpeg", dpi = 1200)
 
 # Save - for RGS requirements
 ggsave("./Maps/main_image.jpeg", width = 9.691666666666666, height = 5.441666666666666, dpi = 1200) # Main image (width = 1163 px, height = 653 px)
