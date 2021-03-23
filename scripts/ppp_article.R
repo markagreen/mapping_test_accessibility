@@ -82,7 +82,7 @@ map2
 ## Create location allocation map ##
 
 # Run location allocation model
-source(location_allocation_model.R) 
+source("./location_allocation_model.R") 
 
 # Save proposed new locations as spatial object
 newsites_sp <- mc_5$facility_selected[[1]] %>% # Convert sites to spatial points format
@@ -117,10 +117,10 @@ map3 # Plot
 
 # Combine maps
 final_map <- map1 + map2 + map3 + plot_annotation(tag_levels = 'A', # Define plots
-  title = 'Asymptomatic testing in Liverpool (November 2020)', # Add titles
-  subtitle = 'A: 15 min walk from each test site (black). B: Test uptake (quartiles with 1 = low, 4 = high).
-C: Proposed new sites (blue).', 
-theme = theme(plot.title = element_text(face = "bold"))) # Make title bold
+  title = 'Assessing asymptomatic test site coverage in Liverpool (November 2020)', # Add titles
+  subtitle = 'A: 15 min walking distance around each test site (black). B: Test uptake (quartiles with 1 = low, 4 = high).
+C: Proposed new sites to maximise geographic coverage (blue) compared to existing coverage (black).', 
+  theme = theme(plot.title = element_text(face = "bold"))) # Make title bold
 final_map # Print
 
 # Save
