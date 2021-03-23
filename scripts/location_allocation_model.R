@@ -48,17 +48,17 @@ leaflet() %>%
 
 # Maximise coverage of test sites by population
 
-# Describe current coverage
-coverage(current_sites, 
-         oas_coords,
-         distance_cutoff = 100)
-
 # Edit inputs to match required format
 current_sites <- sites
 current_sites$Location <- NULL
 names(current_sites)[names(current_sites)=="X"] <- "long"
 names(current_sites)[names(current_sites)=="Y"] <- "lat"
 names(oas_coords)[names(oas_coords)=="lon"] <- "long"
+
+# Describe current coverage
+coverage(current_sites, 
+         oas_coords,
+         distance_cutoff = 100)
 
 # Load in possible new test site locations
 postcodes <- read.csv("./l_postcodes/nspd_2020_05.csv") # All 'L' postcodes as of May 2020
