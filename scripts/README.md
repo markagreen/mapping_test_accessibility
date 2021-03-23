@@ -7,6 +7,6 @@ Description of scripts:
 * ppp_article.R - creates the featured graphic for People, Places and Policy paper
 * locating_new_sites.Rmd - code for estimating the location of new test sites for asymptomatic testing in Liverpool
 * location_allocation_model.R - code for running location-allocation modelling for estimating optimal site coverage
-possible_LCC_sites.Rmd - location-allocation modelling for estimating where new testing sites should be located
+* possible_LCC_sites.Rmd - location-allocation modelling for estimating where new testing sites should be located
 
 No data is shared currently due to data sharing requirements, so code is to provide examples of how to recreate plots.
